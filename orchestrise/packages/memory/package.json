@@ -1,0 +1,25 @@
+{
+  "name": "@orchestrise/memory",
+  "version": "0.1.0",
+  "description": "Memory implementations for Orchestrise LLM chain framework",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@orchestrise/core": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "tsup": "^7.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^0.34.0"
+  }
+} 
