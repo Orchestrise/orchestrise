@@ -2,7 +2,8 @@ import { BaseChain } from './chain';
 import { PromptStep } from './steps/prompt';
 import { ToolStep } from './steps/tool';
 import { ModelStep } from './steps/model';
-import { Tracer, Memory, ModelAdapter, Tool, ModelOptions } from './types';
+import { ConditionalStep, ConditionFunction } from './steps/conditional';
+import { Tracer, Memory, ModelAdapter, Tool, ModelOptions, Step } from './types';
 
 let stepCounter = 0;
 
@@ -46,4 +47,15 @@ export function createModelStep(
 ) {
   const id = `model-${++stepCounter}`;
   return new ModelStep(id, modelAdapter, options);
+}
+
+export function createConditionalStep(
+  options: {
+    condition: string | ConditionFunction;
+    trueStep: Step;
+    falseStep?: Step;
+  }
+) {
+  const id = `conditional-${++stepCounter}`;
+  return new ConditionalStep(id, options);
 } 

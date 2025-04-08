@@ -1,0 +1,36 @@
+{
+  "name": "@orchestrise/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for Orchestrise LLM chain framework",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "orchestrise": "./bin/orchestrise.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --dts",
+    "dev": "tsup src/index.ts --format cjs --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@orchestrise/core": "workspace:*",
+    "@orchestrise/models": "workspace:*",
+    "@orchestrise/tools": "workspace:*",
+    "@orchestrise/tracing": "workspace:*",
+    "@orchestrise/memory": "workspace:*",
+    "commander": "^10.0.0",
+    "chalk": "^5.2.0",
+    "inquirer": "^9.1.5",
+    "ora": "^6.3.0"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.3",
+    "rimraf": "^5.0.0",
+    "tsup": "^7.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^0.34.0"
+  }
+} 

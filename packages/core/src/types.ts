@@ -10,18 +10,27 @@ export interface ExecutionContext {
 }
 
 export interface RunOptions {
-  modelOptions?: Record<string, any>;
+  modelOptions?: ModelOptions;
   tracing?: boolean;
   timeout?: number;
   retry?: {
     attempts: number;
     backoff?: number;
   };
+  stream?: boolean;
+  onPartialResult?: (partialResult: PartialStepResult) => void;
 }
 
 export interface StepResult {
   output: any;
   error?: Error;
+  metadata?: Record<string, any>;
+}
+
+export interface PartialStepResult {
+  stepId: string;
+  chunk: string;
+  isDone: boolean;
   metadata?: Record<string, any>;
 }
 
@@ -58,6 +67,27 @@ export interface ModelAdapter {
   id: string;
   call(prompt: string, options?: ModelOptions): Promise<ModelResponse>;
   callWithTools(prompt: string, tools: Tool[], options?: ModelOptions): Promise<ModelResponse>;
+  streamingSupported?: boolean;
+  streamCall?(
+    prompt: string, 
+    options?: ModelOptions,
+    callbacks?: {
+      onChunk: (chunk: string, metadata?: Record<string, any>) => void;
+      onComplete: (fullResponse: ModelResponse) => void;
+      onError: (error: Error) => void;
+    }
+  ): Promise<void>;
+  streamCallWithTools?(
+    prompt: string, 
+    tools: Tool[], 
+    options?: ModelOptions,
+    callbacks?: {
+      onChunk: (chunk: string, metadata?: Record<string, any>) => void;
+      onToolCall: (toolCall: ToolCall) => void;
+      onComplete: (fullResponse: ModelResponse) => void;
+      onError: (error: Error) => void;
+    }
+  ): Promise<void>;
 }
 
 export interface ModelOptions {
@@ -65,6 +95,7 @@ export interface ModelOptions {
   maxTokens?: number;
   stopSequences?: string[];
   topP?: number;
+  model?: string;
   [key: string]: any;
 }
 

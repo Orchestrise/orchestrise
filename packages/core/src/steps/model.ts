@@ -1,4 +1,4 @@
-import { ExecutionContext, StepResult, ModelAdapter, ModelOptions, Tool } from '../types';
+import { ExecutionContext, StepResult, ModelAdapter, ModelOptions, Tool, PartialStepResult } from '../types';
 import { BaseStep } from './base';
 
 export class ModelStep extends BaseStep {
@@ -33,25 +33,20 @@ export class ModelStep extends BaseStep {
         ...context.options?.modelOptions,
       };
       
-      let response;
-      if (this.tools.length > 0) {
-        response = await this.modelAdapter.callWithTools(
-          renderedPrompt,
-          this.tools,
-          modelOptions
-        );
-      } else {
-        response = await this.modelAdapter.call(renderedPrompt, modelOptions);
+      // If streaming is supported and requested
+      if (
+        context.options?.stream && 
+        this.modelAdapter.streamingSupported && 
+        (
+          (this.tools.length > 0 && this.modelAdapter.streamCallWithTools) || 
+          (this.tools.length === 0 && this.modelAdapter.streamCall)
+        )
+      ) {
+        return await this.executeStreaming(context, renderedPrompt, modelOptions);
       }
       
-      return {
-        output: response.content,
-        metadata: {
-          prompt: renderedPrompt,
-          toolCalls: response.toolCalls,
-          ...response.metadata,
-        },
-      };
+      // Fall back to non-streaming if streaming not supported or not requested
+      return await this.executeNonStreaming(renderedPrompt, modelOptions);
     } catch (error) {
       return {
         output: null,
@@ -59,6 +54,107 @@ export class ModelStep extends BaseStep {
         metadata: { prompt: this.prompt },
       };
     }
+  }
+  
+  private async executeNonStreaming(renderedPrompt: string, modelOptions: ModelOptions): Promise<StepResult> {
+    let response;
+    if (this.tools.length > 0) {
+      response = await this.modelAdapter.callWithTools(
+        renderedPrompt,
+        this.tools,
+        modelOptions
+      );
+    } else {
+      response = await this.modelAdapter.call(renderedPrompt, modelOptions);
+    }
+    
+    return {
+      output: response.content,
+      metadata: {
+        prompt: renderedPrompt,
+        toolCalls: response.toolCalls,
+        ...response.metadata,
+      },
+    };
+  }
+  
+  private async executeStreaming(
+    context: ExecutionContext, 
+    renderedPrompt: string, 
+    modelOptions: ModelOptions
+  ): Promise<StepResult> {
+    return new Promise((resolve, reject) => {
+      let fullContent = '';
+      let toolCalls: any[] = [];
+      let metadata: Record<string, any> = {};
+      
+      const onChunk = (chunk: string, chunkMetadata?: Record<string, any>) => {
+        fullContent += chunk;
+        
+        if (context.options?.onPartialResult) {
+          const partialResult: PartialStepResult = {
+            stepId: this.id,
+            chunk,
+            isDone: false,
+            metadata: chunkMetadata,
+          };
+          
+          context.options.onPartialResult(partialResult);
+        }
+      };
+      
+      const onComplete = (fullResponse: any) => {
+        if (context.options?.onPartialResult) {
+          const partialResult: PartialStepResult = {
+            stepId: this.id,
+            chunk: '',
+            isDone: true,
+            metadata: fullResponse.metadata,
+          };
+          
+          context.options.onPartialResult(partialResult);
+        }
+        
+        resolve({
+          output: fullContent,
+          metadata: {
+            prompt: renderedPrompt,
+            toolCalls,
+            ...fullResponse.metadata,
+          },
+        });
+      };
+      
+      const onError = (error: Error) => {
+        reject(error);
+      };
+      
+      const onToolCall = (toolCall: any) => {
+        toolCalls.push(toolCall);
+      };
+      
+      try {
+        if (this.tools.length > 0 && this.modelAdapter.streamCallWithTools) {
+          this.modelAdapter.streamCallWithTools(
+            renderedPrompt,
+            this.tools,
+            modelOptions,
+            { onChunk, onToolCall, onComplete, onError }
+          );
+        } else if (this.modelAdapter.streamCall) {
+          this.modelAdapter.streamCall(
+            renderedPrompt,
+            modelOptions,
+            { onChunk, onComplete, onError }
+          );
+        } else {
+          // This should never happen because we check in execute()
+          reject(new Error('Streaming not supported by model adapter'));
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
   
   private renderTemplate(template: string, variables: Record<string, any>): string {
