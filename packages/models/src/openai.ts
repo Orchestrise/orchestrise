@@ -1,11 +1,11 @@
 import OpenAI from 'openai';
 import { 
-  ModelAdapter,
   ModelOptions,
   ModelResponse,
   Tool,
   ToolCall 
 } from '@orchestrise/core';
+import { BaseModelAdapter } from './base';
 
 export interface OpenAIAdapterOptions {
   apiKey?: string;
@@ -14,14 +14,13 @@ export interface OpenAIAdapterOptions {
   defaultModel?: string;
 }
 
-export class OpenAIAdapter implements ModelAdapter {
-  id: string;
+export class OpenAIAdapter extends BaseModelAdapter {
   private client: OpenAI;
   private defaultModel: string;
-  streamingSupported: boolean = true;
 
   constructor(options: OpenAIAdapterOptions = {}) {
-    this.id = 'openai';
+    super('openai');
+    this.streamingSupported = true;
     this.client = new OpenAI({
       apiKey: options.apiKey || process.env.OPENAI_API_KEY,
       organization: options.organization,
@@ -34,24 +33,25 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const response = await this.client.chat.completions.create({
         model: options.model || this.defaultModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages: this.formatMessages(prompt, options),
         temperature: options.temperature,
         max_tokens: options.maxTokens,
         top_p: options.topP,
         stop: options.stopSequences,
       });
 
-      return {
-        content: response.choices[0]?.message?.content || '',
-        metadata: {
+      return this.formatResponse(
+        response.choices[0]?.message?.content || '',
+        undefined,
+        {
           promptTokens: response.usage?.prompt_tokens,
           completionTokens: response.usage?.completion_tokens,
           totalTokens: response.usage?.total_tokens,
           model: response.model,
-        },
-      };
+        }
+      );
     } catch (error) {
-      throw new Error(`OpenAI API call failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(this.createErrorMessage('API call', error));
     }
   }
 
@@ -73,7 +73,7 @@ export class OpenAIAdapter implements ModelAdapter {
 
       const response = await this.client.chat.completions.create({
         model: options.model || this.defaultModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages: this.formatMessages(prompt, options),
         temperature: options.temperature,
         max_tokens: options.maxTokens,
         top_p: options.topP,
@@ -87,18 +87,18 @@ export class OpenAIAdapter implements ModelAdapter {
           arguments: JSON.parse(call.function.arguments),
         })) || [];
 
-      return {
-        content: response.choices[0]?.message?.content || '',
-        toolCalls: toolCalls,
-        metadata: {
+      return this.formatResponse(
+        response.choices[0]?.message?.content || '',
+        toolCalls,
+        {
           promptTokens: response.usage?.prompt_tokens,
           completionTokens: response.usage?.completion_tokens,
           totalTokens: response.usage?.total_tokens,
           model: response.model,
-        },
-      };
+        }
+      );
     } catch (error) {
-      throw new Error(`OpenAI API call with tools failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(this.createErrorMessage('API call with tools', error));
     }
   }
   
@@ -114,7 +114,7 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const stream = await this.client.chat.completions.create({
         model: options.model || this.defaultModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages: this.formatMessages(prompt, options),
         temperature: options.temperature,
         max_tokens: options.maxTokens,
         top_p: options.topP,
@@ -123,7 +123,6 @@ export class OpenAIAdapter implements ModelAdapter {
       });
       
       let fullContent = '';
-      let metadata: Record<string, any> = {};
       
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content || '';
@@ -137,21 +136,20 @@ export class OpenAIAdapter implements ModelAdapter {
       }
       
       // Synthesize a complete response
-      const response: ModelResponse = {
-        content: fullContent,
-        metadata: {
+      const response = this.formatResponse(
+        fullContent,
+        undefined,
+        {
           model: options.model || this.defaultModel,
           // Note: token counts not available with streaming
-        },
-      };
+        }
+      );
       
       if (callbacks?.onComplete) {
         callbacks.onComplete(response);
       }
     } catch (error) {
-      const errorObj = error instanceof Error 
-        ? error 
-        : new Error(`OpenAI streaming API call failed: ${String(error)}`);
+      const errorObj = new Error(this.createErrorMessage('streaming API call', error));
       
       if (callbacks?.onError) {
         callbacks.onError(errorObj);
@@ -185,7 +183,7 @@ export class OpenAIAdapter implements ModelAdapter {
       
       const stream = await this.client.chat.completions.create({
         model: options.model || this.defaultModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages: this.formatMessages(prompt, options),
         temperature: options.temperature,
         max_tokens: options.maxTokens,
         top_p: options.topP,
@@ -253,22 +251,19 @@ export class OpenAIAdapter implements ModelAdapter {
       }
       
       // Synthesize a complete response
-      const response: ModelResponse = {
-        content: fullContent,
-        toolCalls: toolCalls,
-        metadata: {
+      const response = this.formatResponse(
+        fullContent,
+        toolCalls,
+        {
           model: options.model || this.defaultModel,
-          // Note: token counts not available with streaming
-        },
-      };
+        }
+      );
       
       if (callbacks?.onComplete) {
         callbacks.onComplete(response);
       }
     } catch (error) {
-      const errorObj = error instanceof Error 
-        ? error 
-        : new Error(`OpenAI streaming API call with tools failed: ${String(error)}`);
+      const errorObj = new Error(this.createErrorMessage('streaming API call with tools', error));
       
       if (callbacks?.onError) {
         callbacks.onError(errorObj);
@@ -277,8 +272,21 @@ export class OpenAIAdapter implements ModelAdapter {
       }
     }
   }
+  
+  protected formatMessages(
+    prompt: string, 
+    options?: ModelOptions
+  ): Array<{ role: string; content: string }> {
+    // Handle chat history if provided
+    if (options?.messages) {
+      return options.messages as Array<{ role: string; content: string }>;
+    }
+    
+    // Default to a single user message
+    return [{ role: 'user', content: prompt }];
+  }
 }
 
-export function createOpenAIAdapter(options: OpenAIAdapterOptions = {}): ModelAdapter {
+export function createOpenAIAdapter(options: OpenAIAdapterOptions = {}): OpenAIAdapter {
   return new OpenAIAdapter(options);
 } 
